@@ -1,0 +1,14 @@
+# Built installers and Archiware archives (large; download/build locally)
+*.pkg
+*.mpkg
+*.tgz
+*.tar.gz
+*.dmg
+*.zip
+
+# macOS
+.DS_Store
+._*
+
+# Local tool settings
+.claude/
