@@ -77,3 +77,18 @@ The version is parsed from the archive filename. `awpst800-darwin.tgz` yields ve
 - **Install log**: Check `/var/log/awp_install.log` for postinstall output.
 - **Verify package contents**: `pkgutil --payload-files awpstXXX-installer.pkg`
 - **Check installed version**: `pkgutil --pkg-info com.aw.pst-installer`
+
+### Verifying a deployment
+
+Run these on the target Mac after installing:
+
+```bash
+# should print nothing
+xattr -lr /usr/local/aw | grep com.apple.quarantine
+
+# shows whether postinstall had to clear anything
+tail -20 /var/log/awp_install.log
+
+# confirms the installed version (e.g. 8.0.6)
+pkgutil --pkg-info com.aw.pst-installer
+```
