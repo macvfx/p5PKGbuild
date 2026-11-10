@@ -60,6 +60,14 @@ When the `.pkg` is installed on a target Mac, the following happens in order:
    - Runs `/usr/local/aw/start-server`.
 3. All activity is logged to `/var/log/awp_install.log`.
 
+## Quarantine Handling
+
+A downloaded `.tgz` carries the `com.apple.quarantine` flag. If that flag reaches the target Mac, `tar` copies it onto every extracted file and Gatekeeper blocks the P5 binaries as malware. It is removed at three points:
+
+1. `build-pkg.sh` clears the flag on the source `.tgz`, copies it without extended attributes, strips the staging tree (`xattr -cr`) and aborts if any quarantine flag remains.
+2. `postinstall` clears the flag on the archive in `/private/tmp` before extracting.
+3. `postinstall` runs `xattr -dr com.apple.quarantine /usr/local/aw` after extracting, which also repairs an earlier quarantined install.
+
 ## Version Numbering
 
 The version is parsed from the archive filename. `awpst800-darwin.tgz` yields version `800`, which is mapped to pkg version `8.0.0`. This versioning allows macOS to track installed package versions for upgrades.

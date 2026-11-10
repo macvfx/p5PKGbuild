@@ -1,0 +1,95 @@
+#!/bin/bash
+# AW PST installer script (macOS-safe, Bash 3.2 compatible)
+
+set -euo pipefail
+
+INSTALLER_GLOB="/private/tmp/awpst"*.tgz
+INSTALL_DIR="/usr/local/aw"
+LOG_FILE="/var/log/awp_install.log"
+
+# Ensure log directory exists before redirecting
+mkdir -p "$(dirname "$LOG_FILE")"
+exec >>"$LOG_FILE" 2>&1
+
+log() {
+    # Avoid non‑portable date options; these work on macOS' BSD date
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')]" "$*"
+}
+
+die() {
+    log "ERROR: $*"
+    exit 1
+}
+
+# Enable nullglob in a Bash‑3.2‑safe way (shopt exists in 3.2) [web:16][web:19]
+shopt -s nullglob
+installers=( $INSTALLER_GLOB )
+shopt -u nullglob
+
+installer_count=${#installers[@]}
+
+if [ "$installer_count" -eq 0 ]; then
+    die "No installer archive matching ${INSTALLER_GLOB} found"
+elif [ "$installer_count" -gt 1 ]; then
+    die "Multiple installers found in /tmp, please keep only one: ${installers[*]}"
+fi
+
+installer_path=${installers[0]}
+installer_basename=$(basename "$installer_path")
+
+# Extract version number from installer name: awpst800-darwin.tgz -> 800
+case "$installer_basename" in
+    awpst*[0-9]-*|awpst*[0-9][0-9]-*|awpst*[0-9][0-9][0-9]-*)
+        # POSIX‑ish extraction without Bash‑4 regex
+        # Strip prefix "awpst", then strip after first "-" [web:10]
+        tmp=${installer_basename#awpst}
+        tmp=${tmp%%-*}
+        version="$tmp"
+        ;;
+    *)
+        version="unknown"
+        log "WARNING: Could not parse version from installer name: $installer_basename"
+        ;;
+esac
+
+log "Starting installation of AW PST version $version from $installer_basename"
+
+# Ensure install dir exists
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR"
+
+# Stop server if present and executable; ignore failure
+if [ -x "./stop-server" ]; then
+    log "Stopping existing server"
+    if ! ./stop-server; then
+        log "WARNING: stop-server returned non-zero, continuing"
+    fi
+fi
+
+# Clear the quarantine flag on the archive before unpacking: macOS tar copies
+# a quarantined archive's flag onto every file it extracts, and Gatekeeper
+# then blocks the binaries as if they were malware.
+if /usr/bin/xattr -p com.apple.quarantine "$installer_path" >/dev/null 2>&1; then
+    log "Clearing com.apple.quarantine on $installer_path"
+    /usr/bin/xattr -d com.apple.quarantine "$installer_path" || log "WARNING: could not clear quarantine on archive"
+fi
+
+# Unpack installer (BSD tar on macOS understands xzf) [web:11]
+log "Extracting $installer_path into $INSTALL_DIR"
+tar xzf "$installer_path"
+
+# Belt and braces: remove any quarantine flag from the installed files
+# (also repairs files left quarantined by an earlier install)
+log "Removing com.apple.quarantine from $INSTALL_DIR"
+/usr/bin/xattr -dr com.apple.quarantine "$INSTALL_DIR" 2>/dev/null || true
+
+# Start server, fail script if this fails
+if [ -x "./start-server" ]; then
+    log "Starting server"
+    ./start-server
+else
+    die "start-server not found or not executable in $INSTALL_DIR"
+fi
+
+log "AW PST version $version installation complete"
+exit 0
